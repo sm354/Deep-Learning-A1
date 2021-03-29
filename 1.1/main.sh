@@ -1,6 +1,6 @@
 #!/bin/sh
 ### Set the job name (for your reference)
-#PBS -N job1
+#PBS -N ResNetA
 ### Set the project name, your department code by default
 #PBS -P ee
 ### Request email when job begins and ends
@@ -11,7 +11,7 @@
 #PBS -l select=1:ngpus=1
 
 ### Specify "wallclock time" required for this job, hhh:mm:ss
-#PBS -l walltime=00:10:00
+#PBS -l walltime=01:00:00
 
 #PBS -l software=python
 # After job starts, must goto working directory. 
