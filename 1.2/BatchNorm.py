@@ -37,7 +37,7 @@ class BatchNorm2D(nn.Module):
             x = (x-self.runningmean.view([1, self.num_channels, 1, 1]))/torch.sqrt(self.runningvar.view([1, self.num_channels, 1, 1])+self.epsilon)
             out = self.gamma.view([1, self.num_channels, 1, 1]) * x + self.beta.view([1, self.num_channels, 1, 1])
             return out
-            #during training just use the running mean and variance
+            #during testing just use the running mean and variance
         
 m = BatchNorm2D(3)
 m_pytorch = nn.BatchNorm2d(3)
