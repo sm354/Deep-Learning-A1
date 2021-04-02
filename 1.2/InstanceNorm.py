@@ -32,7 +32,6 @@ class InstanceNorm2D(nn.Module):
             #variance calculation is using the biased formula during training
             (variance, mean) = torch.var_mean(x, dim = [2, 3], unbiased=False)
             out = (x-mean.view([-1, self.num_channels, 1, 1]))/torch.sqrt(variance.view([-1, self.num_channels, 1, 1])+self.epsilon)
-
             #logically the variance and mean calculation for updating running variance, mean should be as follows
             (variance, mean) = torch.var_mean(x, dim = [0, 2, 3], unbiased = False)
             self.runningmean = (self.momentum) * mean + (1-self.momentum) * self.runningmean 
@@ -43,9 +42,8 @@ class InstanceNorm2D(nn.Module):
         
         if(self.rescale == True):
             out = self.gamma.view([1, self.num_channels, 1, 1]) * out + self.beta.view([1, self.num_channels, 1, 1])
-            return out
-        else:
-            return out
+        
+        return out
         #during testing just use the running mean and variance
 
 
