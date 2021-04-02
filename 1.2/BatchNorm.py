@@ -39,11 +39,12 @@ class BatchNorm2D(nn.Module):
             return out
             #during testing just use the running mean and variance
         
-m = BatchNorm2D(3)
-m_pytorch = nn.BatchNorm2d(3)
-input = torch.randn(3, 3, 1, 1)
-output = m(input)
-output_pytorch = m_pytorch(input)
-print(output)
-print(output_pytorch)
-print((output - output_pytorch).mean())
+# m = BatchNorm2D(3)
+# m_pytorch = nn.BatchNorm2d(3)
+# input = torch.randn(3, 3, 1, 1)
+# output = m(input)
+# output_pytorch = m_pytorch(input)
+# print(output)
+# print(output_pytorch)
+# print((output - output_pytorch).mean())
+

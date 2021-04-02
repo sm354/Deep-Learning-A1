@@ -49,12 +49,12 @@ class InstanceNorm2D(nn.Module):
         #during testing just use the running mean and variance
 
 
-m = InstanceNorm2D(3, rescale = True)
-m_pytorch = nn.InstanceNorm2d(3, affine = True)
-for i in range(10):
-    input = torch.randn(3, 3, i, i)
-    output_pytorch = m_pytorch(input)
-    # print(output_pytorch)
-    output = m(input)
-    # print(output)
-    print((output - output_pytorch).mean())
+# m = InstanceNorm2D(3, rescale = True)
+# m_pytorch = nn.InstanceNorm2d(3, affine = True)
+# for i in range(1, 10):
+#     input = torch.randn(3, 3, i, i)
+#     output_pytorch = m_pytorch(input)
+#     # print(output_pytorch)
+#     output = m(input)
+#     # print(output)
+#     print((output - output_pytorch).mean())
