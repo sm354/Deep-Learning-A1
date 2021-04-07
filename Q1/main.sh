@@ -6,7 +6,7 @@
 ### Request email when job begins and ends
 #PBS -m bea
 ### Specify email address to use for notification.
-#PBS -M $USER@iitd.ac.in
+#PBS -M ee1180542@iitd.ac.in
 ####
 #PBS -l select=1:ngpus=1
 

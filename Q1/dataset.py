@@ -12,7 +12,7 @@ class Cifar10(Dataset):
         path='train' if train else 'val'
         self.data=np.load(root+'%s_x.npy'%path)
         self.targets=np.load(root+'%s_y.npy'%path)
-        self.mean=torch.from_numpy(np.load('../CIFAR10/per_pixel_mean.npy')).float()
+        self.mean=torch.from_numpy(np.load('../../CIFAR10/per_pixel_mean.npy')).float()
 
     def __getitem__(self, index):
         img, target = self.data[index], self.targets[index]

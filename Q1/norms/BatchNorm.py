@@ -30,7 +30,8 @@ class BatchNorm2D(nn.Module):
         if(self.training):
             #calculate mean and variance along the dimensions other than the channel dimension
             #variance calculation is using the biased formula during training
-            (variance, mean) = torch.var_mean(x, dim = [0, 2, 3], unbiased = False)
+            variance = torch.var(x, dim = [0, 2, 3], unbiased = False)
+            mean  = torch.mean(x, dim = [0, 2, 3])
             self.runningmean = (self.momentum) * mean + (1-self.momentum) * self.runningmean 
             self.runningvar = (self.momentum) * variance + (1-self.momentum) * self.runningvar
             out = (x-mean.view([1, self.num_channels, 1, 1]))/torch.sqrt(variance.view([1, self.num_channels, 1, 1])+self.epsilon)
