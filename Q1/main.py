@@ -11,17 +11,17 @@ import PIL.Image as Image
 import numpy as np
 # from model import *
 # from models.BN_model import *
-from models.BIN_model import *
-from model.GN_model import *
-from model.LN_model import *
-from model.IN_model import *
-from model.NN_model import *
+# from models.BIN_model import *
+# from models.GN_model import *
+# from models.LN_model import *
+# from models.IN_model import *
+from models.NN_model import *
 
 from dataset import *
 from torch.utils.data import Dataset, DataLoader
 
 def main():
-    exp_name='ResNet_BN'
+    exp_name='ResNet_NN'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # print(torch.cuda.get_device_properties(0))
     
