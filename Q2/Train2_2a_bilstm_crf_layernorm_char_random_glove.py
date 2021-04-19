@@ -17,7 +17,191 @@ from seqeval.metrics import f1_score as seq_f1_score
 import pickle as pickle
 
 
-"""# LSTM models for character **level**
+class LayerNorm_LSTMCell(nn.Module):
+    def __init__(self, embedding_size, hidden_size, epsilon=1e-5):
+        super(LayerNorm_LSTMCell, self).__init__()
+        self.embedding_size=embedding_size
+        self.hidden_size=hidden_size
+        self.epsilon=1e-5
+
+        self.inp2hidden = nn.Linear(embedding_size, 4*hidden_size) #since there are 4 linear transformations : i,f,g,o
+        self.hidden2hidden = nn.Linear(hidden_size, 4*hidden_size) #this takes input h_t_minus_1
+
+        # define layernorm layers : we are normalising input to input,forget,output,cell gate in "cummulative fashion"
+        self.layernorm_inp2hidden = nn.LayerNorm(4*hidden_size)
+        self.layernorm_hidden2hidden = nn.LayerNorm(4*hidden_size)
+        self.layernorm_over_c = nn.LayerNorm(hidden_size)
+   
+    def forward(self, inp, h_c_prev=None): # x (batch,embedding_size), h_c (h and c at t-1) : [(batch,hidden_size)]*2
+        h_prev, c_prev = h_c_prev if h_c_prev!=None else (torch.zeros((inp.shape[0],self.hidden_size)).to(inp.device) , torch.zeros((inp.shape[0],self.hidden_size)).to(inp.device))
+        # first do the linear transformations with layernorms
+        linear_transform_inp = self.layernorm_inp2hidden(self.inp2hidden(inp)) + self.layernorm_hidden2hidden(self.hidden2hidden(h_prev))
+
+        #find the gates
+        split=self.hidden_size
+        i=torch.sigmoid(linear_transform_inp[:,0:split])
+        f=torch.sigmoid(linear_transform_inp[:,split:2*split])
+        o=torch.sigmoid(linear_transform_inp[:,2*split:3*split])
+        g=torch.tanh(linear_transform_inp[:,3*split:])
+        c=f*c_prev+i*g
+
+        #apply final layer norm
+        c=self.layernorm_over_c(c)
+        h=o*torch.tanh(c)
+        return (h,c)
+
+class LSTM(nn.Module):
+    def __init__(self, embedding_size, hidden_size, bidirectional=True, batch_first=True):
+        super(LSTM, self).__init__()
+        # bidirectional=True, batch_first=True : always (assumed)
+        self.embedding_size=embedding_size
+        self.hidden_size=hidden_size
+        self.lstm_cell_fwd=LayerNorm_LSTMCell(embedding_size, hidden_size)
+        self.lstm_cell_bkwd=LayerNorm_LSTMCell(embedding_size, hidden_size)
+
+    def forward(self, inp): #inp (batch,seq_len,embedding_size)
+        # iterate over seq_len in forward and backward direction (using their respective lstm cells)
+
+        ht_fwd, ht_bkwd = [],[]
+        ct_fwd, ct_bkwd = [],[]
+        
+        for t in range(inp.shape[1]):
+            #forward lstm
+            h_c_prev=(ht_fwd[t-1],ct_fwd[t-1]) if t!=0 else None
+            ht,ct=self.lstm_cell_fwd(inp[:,t,:],h_c_prev)
+            ht_fwd.append(ht)
+            ct_fwd.append(ct)
+
+            #backward lstm
+            t_ = inp.shape[1]-t-1
+            h_c_prev_ = (ht_bkwd[0],ct_bkwd[0]) if t_!=inp.shape[1]-1 else None
+            ht_,ct_=self.lstm_cell_bkwd(inp[:,t_,:],h_c_prev_)
+            ht_bkwd.insert(0,ht_)
+            ct_bkwd.insert(0,ct_)
+    
+        #now stack ht and give it as out
+        #also take last ht,ct of fwd lstm and first ht,ct of bkwd lstm
+        #and give it as hn,cn after stacking
+
+        ht_fwd=torch.stack(ht_fwd) #seq_len,batch,hidden_dim
+        ct_fwd=torch.stack(ct_fwd) #seq_len,batch,hidden_dim
+        ht_bkwd=torch.stack(ht_bkwd) #seq_len,batch,hidden_dim
+        ct_bkwd=torch.stack(ct_bkwd) #seq_len,batch,hidden_dim
+        out=torch.cat((ht_fwd,ht_bkwd),dim=2).permute(1,0,2) #batch,seq_len,2*hidden_dim
+
+        hn=torch.stack((ht_fwd[-1],ht_bkwd[0])) #batch,hidden_dim
+        cn=torch.stack((ct_fwd[-1],ct_bkwd[0])) #batch,hidden_dim
+        return out,(hn,cn)
+
+
+
+"""### CRF MODULE"""
+
+class CRFmodule(nn.Module):
+    def __init__(self, numclass):
+        super(CRFmodule, self).__init__()
+        # numtags is representing the start position and numtags+1 the end position/id of the tags
+        random_transition = torch.zeros(numclass+2, numclass+2)
+        random_transition[numclass, :], random_transition[:, numclass+1] = -10000., -10000.
+        self.transmat = nn.Parameter(random_transition) # learnable matrix shape (num_classes, numclasses) including start and stop tag
+        self.startid = numclass
+        self.endid = numclass+1
+    
+    def forward(self, Ylstm, Ymask):
+        # y of shape (batchsize, seq_len, num_classes) num_classes = 18 when start and stop are not included but pad is included
+
+        # use viterbi algorithm to decode the correct sequence, given "y" sequence of tags 
+        # from the bilstm and given the transition matrix that we have
+
+        # VITERBI ALGORITHM - output = decoded_tag_sequence of shape (batchsize, seqlen)
+        forward_scores = self.init_for_scores(Ylstm)
+        backtrack = []
+        for i in range(Ylstm.shape[1]):
+            for_scr_temp = forward_scores.view((Ylstm.shape[0], 1, Ylstm.shape[2])) 
+            forward_transition_score_word = self.transmat + for_scr_temp 
+
+            max_indices = torch.argmax(forward_transition_score_word, dim = 2)
+            forward_transition_score_word , _ = torch.max(forward_transition_score_word, dim = 2) # max_indices of shape (batches, C)
+            backtrack.append(max_indices)
+            unaryscore_word = Ylstm[:, i]#.view(Ylstm.shape[0], 1, Ylstm.shape[2]) # unary_score_word  of shape (batchsize, 1, num_classes)
+            forward_transition_score_word = forward_transition_score_word + unaryscore_word
+            
+            forward_scores = forward_transition_score_word * Ymask[:, i].view(Ylstm.shape[0], 1) + (1 - Ymask[:, i].view(Ylstm.shape[0], 1)) * forward_scores
+
+        end_score = forward_scores + self.transmat[self.endid] #shape will be (batches, num_classes)
+        max_index = torch.argmax(end_score, dim = 1).view(Ylstm.shape[0], 1) # shape is (Batch, 1)
+        # print(max_index.shape)
+        decoded_path = [max_index] 
+
+        for index in backtrack[::-1]: #index is of shape (batches, numclasses)
+            # print(max_index)
+            max_index = torch.gather(index, 1, max_index).view(Ylstm.shape[0], 1)
+            decoded_path.append(max_index)
+        decoded_path = decoded_path[::-1][1:] #remove the start word
+        # print(decoded_path)
+        decoded_path = torch.cat(decoded_path, dim = 1)
+        return decoded_path
+
+    def crfloss(self, Ylstm, Ytrue, Ymask):
+        # loss is the negative los likelyhood = partition function - numerator
+        partition, numerator  = self.get_partition_numerator(Ylstm, Ytrue, Ymask) #numerator means in log space here
+        loss = partition - numerator
+        # print(numerator.mean(), partition.mean())
+        return loss.mean()
+    
+    def get_partition_numerator(self, Ylstm, Ytrue, Ymask):
+        # calculate the partition function
+        forward_scores = self.init_for_scores(Ylstm)
+        for i in range(Ylstm.shape[1]):
+            unaryscore_word = Ylstm[:, i].view(Ylstm.shape[0], Ylstm.shape[2], 1) # shape is now (batchsize, num_classes, 1)
+            unary_transition_score_word = unaryscore_word + self.transmat.view(1, Ylstm.shape[2], Ylstm.shape[2])
+            temp_score = torch.logsumexp(unary_transition_score_word + forward_scores.view(Ylstm.shape[0], 1, Ylstm.shape[2]), dim = 2)
+            forward_scores = temp_score * (Ymask[:, i].view(Ylstm.shape[0], 1)) + (1- Ymask[:, i].view(Ylstm.shape[0], 1)) * forward_scores
+
+        end_score_ = forward_scores + self.transmat[self.endid].view(1, Ylstm.shape[2])
+        forward_scores = torch.logsumexp(end_score_, dim = 1)
+
+        # calculate the score using Ylstm, Ytrue - shapes (batch, seqlen, numclass), (batch, seqlen)
+        # Ytrue is the tags of shape (Batch, seqlen), we concatenate start tag with this
+        Ytrue_mod = self.concat_start_tag_begin(Ytrue)
+        unary_scores = self.get_emission_score(Ylstm, Ytrue)
+        transition_scores = self.get_transition_score(Ytrue_mod)
+        total_score = ((unary_scores+transition_scores)*Ymask).sum(1) # sum alon the length dimension, finally get a (batch, 1) dimesnion vector
+        end_score = self.get_stop_score(Ytrue_mod)
+        numerator = total_score + end_score # shape is (batchsize)
+        # we have the numerator in log space
+        return forward_scores, numerator
+        
+    def init_for_scores(self, Ylstm):
+        forward_scores = torch.ones((Ylstm.shape[0], Ylstm.shape[2]))*-10000.
+        forward_scores = forward_scores.long().to(Ylstm.device)
+        forward_scores[:, self.startid] = 0.
+        return forward_scores
+
+    def get_stop_score(self, Ytrue):
+        from_ = Ytrue[:, -1].long()
+        to_ = self.endid
+        stop_scores = self.transmat[to_, from_]
+        return stop_scores
+
+    def concat_start_tag_begin(self, Ytrue):
+        starttags_batch = torch.full((Ytrue.shape[0], 1), fill_value = self.startid).to(Ytrue.device)
+        Ytrue = torch.cat((starttags_batch, Ytrue), dim = 1)
+        return Ytrue
+
+    def get_emission_score(self, Ylstm, Ytrue):
+        shape = Ytrue.shape
+        truetags = Ytrue.view(shape[0], shape[1], 1)
+        emission_scores = Ylstm.gather(dim=2, index=truetags.type(torch.int64).to(Ylstm.device)).view(shape[0], shape[1])
+        return emission_scores
+    
+    def get_transition_score(self, Ytrue):
+        from_ = Ytrue[:, :-1].long()
+        to_ = Ytrue[:, 1:].long()
+        transition_scores = self.transmat[to_, from_]
+        return transition_scores # of shape (batch, seqlen)
+
+"""# LSTM model for character **level**
 """
 class forLSTM(nn.Module):
     def __init__(self, embedding_size, hidden_size, pretr_char_embed):
@@ -39,7 +223,6 @@ class forLSTM(nn.Module):
         h = h.view(shape[0], shape[1], 50)
         return h
 
-
 """# BiLSTM Model"""
 class BiLSTM(nn.Module):
     def __init__(self, embedding_size, hidden_size, total_words, num_class, pretrained = False, pretrained_embed = None, char_embed_size = 0, pretr_char_embed = None):
@@ -48,10 +231,25 @@ class BiLSTM(nn.Module):
         self.wordembed = nn.Embedding.from_pretrained(pretrained_embed, freeze = False)
         self.for_charembed = forLSTM(embedding_size = char_embed_size, hidden_size = 25, pretr_char_embed = pretr_char_embed)
         self.dropout = nn.Dropout(p = 0.5)
-        self.bilstm = nn.LSTM(embedding_size + 50,hidden_size, bidirectional = True, batch_first = True)
-        self.linear = nn.Linear(2*hidden_size, num_class) # 2 because forward and backward concatenate
+        self.bilstm = LSTM(embedding_size + 50,hidden_size, bidirectional = True, batch_first = True)
+        self.linear = nn.Linear(2*hidden_size, num_class+2) # 2 because forward and backward concatenate, +2 for feeding it into the crf layer, ie for start stop tags
+        self.crfmodule = CRFmodule(num_class)
+        
+    def forward(self, x, xchar, xlengths, xlength_char, xmask): 
+        xmask = xmask.to(x.device)
+        ylstm, xmask = self.lstmoutput(x, xchar, xlengths, xlength_char, xmask)
+        out = self.crfmodule(ylstm, xmask) #out of shape (batch, seqlen)
+        return out
 
-    def forward(self, x, xchar, xlengths, xlength_char):
+    def loss(self, x, xchar, xlengths, xlength_char, ytrue, xmask):
+        xmask = xmask.to(x.device)
+
+        '''calls the loss function of the crf for getting the negative log likelyhood loss'''
+        ylstm, xmask = self.lstmoutput(x, xchar, xlengths, xlength_char, xmask)
+        loss = self.crfmodule.crfloss(ylstm, ytrue, xmask)
+        return loss
+
+    def lstmoutput(self, x, xchar, xlengths, xlength_char, xmask):
         x = pack_padded_sequence(x, xlengths.cpu(), batch_first=True, enforce_sorted=False)
         x, _ = pad_packed_sequence(x, batch_first=True)
 
@@ -63,17 +261,21 @@ class BiLSTM(nn.Module):
         xchar = pack_padded_sequence(xchar, xlengths.cpu(), batch_first=True, enforce_sorted=False)
         xchar, _ = pad_packed_sequence(xchar, batch_first=True)
 
+        xmask = pack_padded_sequence(xmask, xlengths.cpu(), batch_first=True, enforce_sorted=False)
+        xmask, _ = pad_packed_sequence(xmask, batch_first=True)
+
         word_embedding = self.wordembed(x) # x is of size(batchsize, seq_len), wordembed is of size (batchsize, seq_len, embedding_size = 100)
         forwardchar= self.for_charembed(xchar, xlength_char) #forwardchar and backwardchar would be of size (batchsize, seqlen. embedding_size = 25each) 
         word_embedding = torch.cat((word_embedding, forwardchar), dim = 2)
 
-        word_embedding = self.dropout(word_embedding) #dropout
-        out, (h,c) = self.bilstm(word_embedding) #'out' has dimension(batchsize, seq_len, 2*hidden_size)
+        word_embedding = self.dropout(word_embedding) # dropout
+        out, (h,c) = self.bilstm(word_embedding) # 'out' has dimension(batchsize, seq_len, 2*hidden_size)
+        out = self.linear(out) # now 'out' has dimension(batchsize, seq_len, num_class+2)
 
-        out = self.linear(out) #now 'out' has dimension(batchsize, seq_len, num_class)
-        out = out.view(-1, out.shape[2]) # shape (128*seqlen, 18)
-        out = F.log_softmax(out, dim=1) # take the softmax across the dimension num_class, 'out' has dimension(batchsize, seq_len, num_class)
-        return out
+        return out, xmask
+
+
+
 
 '''Helper Functions'''
 # reading text file in python and making list of sentences (list of lists) and list of tags(list of lists)
@@ -146,6 +348,12 @@ def load_data(datapath, buildvocab_tags= True, vocab = None, nertags = None):
     # print(Xtrain.shape, Ytrain.shape, x_lengths.shape)
     
     return Xtrain, Ytrain, x_lengths, vocab, nertags
+
+def get_mask(x, xlengths):
+    bin_mask = []
+    for i in range(xlengths.shape[0]):
+        bin_mask.append([1]*int(xlengths[i].item())+[0]*int((x.shape[1] - xlengths[i].item())))
+    return torch.tensor(bin_mask)
 
 def load_char_data(words, charvocab):
     train_char_sent = []
@@ -236,6 +444,8 @@ def get_charvocab(vocab):
     return char_vocab
 
 
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -254,14 +464,15 @@ if __name__ == "__main__":
     pre_embeddings = args.initialization
 
 
-
-    if torch.cuda.is_available():  
+    if torch.cuda.is_available():
         device = "cuda:0" 
-    else:  
+    else:
         device = "cpu"  
+
 
     """### Training Data
     ### using dataloader to make data batches"""
+
 
     traindatapath = args.data_dir+"/train.txt"
     devdatapath = args.data_dir+"/dev.txt"
@@ -272,6 +483,8 @@ if __name__ == "__main__":
     """Save vocabulary"""
     pickle.dump([vocab, nertags], open(args.vocabulary_output_file, "wb" ))
 
+    bin_mask_train, bin_mask_dev = get_mask(Xtrain, x_trainlengths), get_mask(Xdev, x_devlengths)
+
     # Character Level training data making
     # make vocabulary of characters from train vocabulary
     char_vocab = get_charvocab(vocab)
@@ -279,7 +492,7 @@ if __name__ == "__main__":
     #make char level train data for the char embeddings 
     Xtrain_char, xlength_char = load_char_level(Xtrain, wordid2word_charlevel_vocab, wordid2wordlen)
     #finally make the dataloader for train
-    traindataset = TensorDataset(Xtrain, Xtrain_char, Ytrain, x_trainlengths, xlength_char)
+    traindataset = TensorDataset(Xtrain, Xtrain_char, Ytrain, x_trainlengths, xlength_char, bin_mask_train)
     Trainloader = DataLoader(traindataset, batch_size= 128, shuffle=True)
 
 
@@ -289,7 +502,7 @@ if __name__ == "__main__":
     #make char level train data for the char embeddings 
     Xdev_char, xdevlength_char = load_char_level(Xdev_temp, wordid2word_charlevel_vocab_dev, wordid2wordlen_dev)
     #finally make the dataloader for train
-    devdataset = TensorDataset(Xdev, Xdev_char, Ydev, x_devlengths, xdevlength_char)
+    devdataset = TensorDataset(Xdev, Xdev_char, Ydev, x_devlengths, xdevlength_char, bin_mask_dev)
     Devloader = DataLoader(devdataset, batch_size= 128, shuffle=True)
 
     # LOAD EMBEDDINGS
@@ -328,6 +541,7 @@ if __name__ == "__main__":
     imp_classes.remove(nertags['O'])
 
 
+
     model = BiLSTM(embedding_size = 100, hidden_size = 100, total_words = len(vocab), num_class = 18, pretrained = True, pretrained_embed = word_embeds, char_embed_size = len(char_vocab), pretr_char_embed = char_onehot).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3) 
@@ -344,7 +558,6 @@ if __name__ == "__main__":
         acc = ((y==ypred)*mask).sum()/mask.sum()
         microf1 = f1_score(y, ypred, labels = imp_classes, average='micro')
         macrof1 = f1_score(y, ypred, labels = imp_classes, average='macro')
-
         return acc, microf1, macrof1
 
     def validate(model, loader):
@@ -354,20 +567,19 @@ if __name__ == "__main__":
             microf1 = 0
             macrof1 = 0
             i = 0
-            for step, (X, Xchar, Y, xlen, xlen_char) in enumerate(loader):
+            for step, (X, Xchar, Y, xlen, xlen_char, Xmask) in enumerate(loader):
                 Y = pack_padded_sequence(Y, xlen, batch_first=True, enforce_sorted=False)
                 Y, _ = pad_packed_sequence(Y, batch_first=True)
-                ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device))#.permute(0, 2, 1)
-                vloss = lossfunction(ypred.to('cpu'), Y.view(-1).type(torch.LongTensor))
+                ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device), Xmask)#.permute(0, 2, 1)
+                vloss = model.loss(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device), Y, Xmask)
                 validloss+=vloss.item()
-                acc_, microf1_, macrof1_ = performance(Y.view(-1), torch.argmax(ypred.to('cpu'), dim = 1), nertags)
+                acc_, microf1_, macrof1_ = performance(Y.view(-1), ypred.to('cpu').view(-1), nertags)
                 acc+=acc_
                 microf1 += microf1_
                 macrof1 += macrof1_
                 i+=1
 
         return validloss/i, acc/i, microf1/i, macrof1/i
-
 
     trainlosslist = []
     trainacclist = [] #accuracy except pad, O
@@ -382,7 +594,7 @@ if __name__ == "__main__":
 
 
     # Model is ready now we have to train using cross entropy loss
-    num_epochs = 50
+    num_epochs = 0
     # validloss = []
     model.train()
     for epoch in range(num_epochs):
@@ -390,7 +602,7 @@ if __name__ == "__main__":
             optimizer = torch.optim.Adam(model.parameters(), lr = 0.0001)
         
         totalloss, acc, microf1, macrof1 = 0, 0, 0, 0
-        for step, (Xbatch , Xchar ,Ybatch, xbatch_len, xlength_char) in enumerate(Trainloader):
+        for step, (Xbatch , Xchar ,Ybatch, xbatch_len, xlength_char, xbatch_mask) in enumerate(Trainloader):
             #make gradients 0
             optimizer.zero_grad()
 
@@ -398,15 +610,16 @@ if __name__ == "__main__":
             Ybatch, y_lengths = pad_packed_sequence(Ybatch, batch_first=True)
 
             #get output from model and claculate loss
-            ypred = model(Xbatch.long().to(device), Xchar.to(device), xbatch_len.to(device), xlength_char.to(device))#.permute(0, 2, 1)
-            acc_, microf1_, macrof1_ = performance(Ybatch.view(-1), torch.argmax(ypred.to('cpu'), dim = 1), nertags)
+            ypred = model(Xbatch.long().to(device), Xchar.to(device), xbatch_len.to(device), xlength_char.to(device), xbatch_mask)#.permute(0, 2, 1)
+            loss = model.loss(Xbatch.long().to(device), Xchar.to(device), xbatch_len.to(device), xlength_char.to(device), Ybatch, xbatch_mask)
+            
+            acc_, microf1_, macrof1_ = performance(Ybatch.view(-1), ypred.to('cpu').view(-1), nertags)
             acc+= acc_
             microf1+=microf1_
             macrof1+=macrof1_
             if(step%20 == 0 and step !=0):
                 print("training accuracy = {}, microF1 = {}, macroF1 = {}".format(acc/(step+1), microf1/(step+1), macrof1/(step+1)))
             
-            loss = lossfunction(ypred.to('cpu'), Ybatch.view(-1).type(torch.LongTensor)) #Ybatch has dimension (batchsize, seqlen), ypred has dimension(batchsize, num_classes, seqlen)
             totalloss += loss.item()
 
             #backward and step
@@ -435,8 +648,12 @@ if __name__ == "__main__":
 
 
 
-    # model.eval()
 
+
+
+
+
+    # model.eval()
 
     # import os
     # if not os.path.exists(rootpath):
@@ -485,11 +702,11 @@ if __name__ == "__main__":
     #     y_predicted = []
     #     y_true = []
     #     with torch.no_grad():
-    #         for step, (X, Xchar, Y, xlen, xlen_char) in enumerate(loader):
+    #         for step, (X, Xchar, Y, xlen, xlen_char, xmask) in enumerate(loader):
     #             Y = pack_padded_sequence(Y, xlen, batch_first=True, enforce_sorted=False)
     #             Y, _ = pad_packed_sequence(Y, batch_first=True)
-    #             ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device))#.permute(0, 2, 1)
-    #             ypred = torch.argmax(ypred.to('cpu'), dim = 1)
+    #             ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device), xmask)#.permute(0, 2, 1)
+    #             # ypred = torch.argmax(ypred.to('cpu'), dim = 1)
     #             ypred = ypred.view(Y.shape[0], -1)
     #             # print(ypred.shape)
 
@@ -535,17 +752,20 @@ if __name__ == "__main__":
     # print('------------Classification Report-------------')
     # print(valid_classif_report)
 
+
+
     # #Test DATASET
     # testdatapath = "/content/drive/MyDrive/Q2_DL/test.txt"
     # char_vocab = get_charvocab(vocab)
     # Xtest, Ytest, x_testlengths, _, _ = load_data(testdatapath, buildvocab_tags=False, vocab = vocab, nertags = nertags)
+    # bin_mask_test =  get_mask(Xtest, x_testlengths)
 
     # Xtest_temp, Ytest_temp, x_testlengths_temp, testvocab, testnertags = load_data(testdatapath, buildvocab_tags=True)
     # wordid2word_charlevel_vocab_test, wordid2wordlen_test = make_id2word_charvocab(testvocab, char_vocab) # of the form {word:[1,2,3,4]}, {wordnum:wordlen}
     # #make char level train data for the char embeddings 
     # Xtest_char, xtestlength_char = load_char_level(Xtest_temp, wordid2word_charlevel_vocab_test, wordid2wordlen_test)
     # #finally make the dataloader for train
-    # testdataset = TensorDataset(Xtest, Xtest_char, Ytest, x_testlengths, xtestlength_char)
+    # testdataset = TensorDataset(Xtest, Xtest_char, Ytest, x_testlengths, xtestlength_char, bin_mask_test)
     # loader_test = DataLoader(testdataset, batch_size= 1, shuffle=False)
     # test_f1_conll, test_acc_conll, test_classif_report = final_metrics(model, loader_test)
 
@@ -583,5 +803,6 @@ if __name__ == "__main__":
     # pickle.dump(test_classif_report, open(rootpath+Expname+"/test_classif_report.dict.pickle", "wb" ))
 
 
-
+    # #Save Model
+    # torch.save(model, rootpath+Expname+"/{}_model.pth".format(Expname))
 

@@ -1,4 +1,4 @@
-from Train2_1_4_bilstm_layernorm_char_random_glove import *
+from Train2_2a_bilstm_crf_layernorm_char_random_glove import *
 
 import argparse
 import os
@@ -38,9 +38,8 @@ else:
 def test_model(model, loader):
     y_predicted = []
     with torch.no_grad():
-        for step, (X, Xchar, Y, xlen, xlen_char) in enumerate(loader):
-            ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device))#.permute(0, 2, 1)
-            ypred = torch.argmax(ypred.to('cpu'), dim = 1)
+        for step, (X, Xchar, Y, xlen, xlen_char, xmask) in enumerate(loader):
+            ypred = model(X.long().to(device), Xchar.to(device), xlen.to(device), xlen_char.to(device), xmask)#.permute(0, 2, 1)
             ypred = ypred.view(Y.shape[0], -1)
             y_predicted.append(ypred)
 
@@ -52,7 +51,6 @@ def test_model(model, loader):
                 sent_pred.append(id2tag[int(y_predicted[i][j, x])])
             y_predicted_list.append(sent_pred)
     return y_predicted_list
-
 
 
 #load model
@@ -75,13 +73,14 @@ for tag in nertags.keys():
 testdatapath = args.test_data_file
 char_vocab = get_charvocab(vocab)
 Xtest, Ytest, x_testlengths, _, _ = load_data(testdatapath, buildvocab_tags=False, vocab = vocab, nertags = nertags)
+bin_mask_test =  get_mask(Xtest, x_testlengths)
 
 Xtest_temp, Ytest_temp, x_testlengths_temp, testvocab, testnertags = load_data(testdatapath, buildvocab_tags=True)
 wordid2word_charlevel_vocab_test, wordid2wordlen_test = make_id2word_charvocab(testvocab, char_vocab) # of the form {word:[1,2,3,4]}, {wordnum:wordlen}
 #make char level train data for the char embeddings 
 Xtest_char, xtestlength_char = load_char_level(Xtest_temp, wordid2word_charlevel_vocab_test, wordid2wordlen_test)
 #finally make the dataloader for train
-testdataset = TensorDataset(Xtest, Xtest_char, Ytest, x_testlengths, xtestlength_char)
+testdataset = TensorDataset(Xtest, Xtest_char, Ytest, x_testlengths, xtestlength_char, bin_mask_test)
 loader_test = DataLoader(testdataset, batch_size= 1, shuffle=False)
 
 predictions = test_model(model, loader_test) #list of lists having predicted ner tags
