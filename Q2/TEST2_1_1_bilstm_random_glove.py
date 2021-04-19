@@ -1,3 +1,5 @@
+from Train2_1_1_bilstm_random_glove import *
+
 import argparse
 import os
 
@@ -25,79 +27,13 @@ import seqeval
 from seqeval.metrics import accuracy_score as seq_accuracy_score
 from seqeval.metrics import classification_report as seq_classification_report
 from seqeval.metrics import f1_score as seq_f1_score
-import cPickle as pickle
-
-def load_data(datapath, buildvocab_tags= True, vocab = None, nertags = None):
-    if(buildvocab_tags == True):
-        all_words = []
-        all_tags = []
-        with open(datapath) as f:
-            lines = f.readlines()
-            sent_num = 0
-            for line in lines[1:]: #1: so that the first blank line isn't taken into account
-                if(line == "\n"):
-                    sent_num+=1
-                else:
-                    line_sep = line.split(sep = " ")
-                    all_words.append(line_sep[0])
-                    all_tags.append(line_sep[3][:-1])
-                    
-        words = list(set(all_words))
-        tags = list(set(all_tags))
-
-        vocab = {}
-        vocab['<pad>'] = 0 # for padding input sequences
-        vocab['<oov>'] = 1
-        for i, word in enumerate(words):
-            vocab[word] = i+2
-            
-        nertags = {}
-        nertags['padtag'] = 0
-        for i,nertag in enumerate(tags):
-            nertags[nertag] = i+1
-        # nertags['padtag'] = len(nertags)
+import pickle as pickle
 
 
-    train_sent = []
-    train_tags = []
-    with open(datapath) as f:
-        lines = f.readlines()
-        sent_num = 0
-        sentence = []
-        tag = []
-        for line in lines[1:]: #1: so that the first blank line isn't taken into account
-            if(line == "\n"):
-                sent_num+=1
-                train_sent.append(sentence)
-                train_tags.append(tag)
-                sentence = []
-                tag = []
-            else:
-                line_sep = line.split(sep = " ")
-                if(line_sep[0] in vocab.keys()):
-                    sentence.append(vocab[line_sep[0]])
-                else:
-                    sentence.append(vocab['<oov>'])
-                    
-                tag.append(nertags[line_sep[3][:-1]])
-
-    # padding the sentences at the end
-    seq_maxlen = max(len(x) for x in train_sent)
-    x_lengths = [len(x) for x in train_sent]
-    Xtrain = []
-    Ytrain = []
-    for sent, tags in zip(train_sent, train_tags):
-        length_toappend = seq_maxlen - len(sent)
-        Xtrain.append(sent+[nertags['padtag']]*length_toappend)
-        Ytrain.append(tags+[nertags['padtag']]*length_toappend)
-
-
-    Xtrain = torch.Tensor(Xtrain)
-    Ytrain = torch.Tensor(Ytrain)
-    x_lengths = torch.Tensor(x_lengths)
-    # print(Xtrain.shape, Ytrain.shape, x_lengths.shape)
-    
-    return Xtrain, Ytrain, x_lengths, vocab, nertags
+if torch.cuda.is_available():  
+    device = "cuda:0" 
+else:  
+    device = "cpu"  
 
 def test_model(model, loader):
     y_predicted = []
@@ -122,6 +58,7 @@ def test_model(model, loader):
 
 
 #load model
+# model = BiLSTM()
 model = torch.load(args.model_file)
 model.eval()
 
@@ -147,3 +84,26 @@ loader_test = DataLoader(testdataset, batch_size= 1, shuffle=False)
 predictions = test_model(model, loader_test) #list of lists having predicted ner tags
 
 #writing to a file and saving it
+def writefile(testfilepath, outputfilepath, predictions):
+    final_output = [] #list of lists which will finally be written to file
+    with open(testfilepath) as f:
+        lines = f.readlines()
+        sentnum = -1 #to take care of the first blank line
+        wordnum = 0
+        for line in lines:
+            if(line == '\n'):
+                sentnum+=1
+                wordnum = 0
+                final_output.append(line)
+
+            else:
+                line_sep = line.split(sep = " ")
+                x = line_sep[:-1]
+                x.append(predictions[sentnum][wordnum]+'\n')
+                wordnum+=1
+                final_output.append(" ".join(x))
+    #write the outputfilepath
+    with open(outputfilepath, 'w+') as f:
+        f.writelines(final_output)
+
+writefile(testdatapath, args.output_file, predictions)
