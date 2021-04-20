@@ -34,6 +34,8 @@ elif(args.char_embeddings == 1 and args.layer_normalization == 1 and args.crf ==
 elif(args.char_embeddings == 1 and args.layer_normalization == 1 and args.crf == 1):
     os.system('python3 TEST2_2a_bilstm_crf_layernorm_char_random_glove.py --model_file {} --output_file {} --test_data_file {} --glove_embeddings_file {} --vocabulary_input_file {}'.format(args.model_file, args.output_file, args.test_data_file, args.glove_embeddings_file, args.vocabulary_input_file ))
 
+elif(args.char_embeddings == 1):
+    os.system('python3 TEST2_2a_bilstm_crf_layernorm_char_random_glove.py --model_file {} --output_file {} --test_data_file {} --glove_embeddings_file {} --vocabulary_input_file {}'.format(args.model_file, args.output_file, args.test_data_file, args.glove_embeddings_file, args.vocabulary_input_file ))
 ################################ extra
 
 # #bilstm+glove/random+crf
