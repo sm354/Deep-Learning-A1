@@ -29,14 +29,15 @@ class BatchNorm2D(nn.Module):
         if(self.training):
             #calculate mean and variance along the dimensions other than the channel dimension
             #variance calculation is using the biased formula during training
-            variance = torch.var(x, dim=[0, 2, 3], unbiased=False)
+            variance = torch.var(x, dim = [0, 2, 3], unbiased=False)
             mean  = torch.mean(x, dim = [0, 2, 3])
             self.runningmean = (1 - self.momentum) * mean + (self.momentum) * self.runningmean 
             self.runningvar = (1 - self.momentum) * variance + (self.momentum) * self.runningvar
             out = (x-mean.view([1, self.num_channels, 1, 1]))/torch.sqrt(variance.view([1, self.num_channels, 1, 1])+self.epsilon)
 
         else:
-            out = (x-self.runningmean.view([1, self.num_channels, 1, 1]))/torch.sqrt((x.shape[0]/(x.shape[0]-1))*self.runningvar.view([1, self.num_channels, 1, 1])+self.epsilon)
+            m = x.shape[0]*x.shape[2]*x.shape[3]
+            out = (x-self.runningmean.view([1, self.num_channels, 1, 1]))/torch.sqrt((m/(m-1))*self.runningvar.view([1, self.num_channels, 1, 1])+self.epsilon)
             #during testing just use the running mean and (UnBiased) variance 
         
         if(self.rescale == True):
@@ -143,7 +144,8 @@ class GroupNorm2D(nn.Module):
     def __init__(self, num_channels, num_groups=4, epsilon=1e-5):
         super(GroupNorm2D, self).__init__()
         self.num_channels = num_channels
-        self.num_groups = num_groups
+        # self.num_groups = num_groups
+        self.num_groups = num_channels // 4
         self.epsilon = epsilon
         self.gamma = nn.Parameter(torch.ones(num_channels))
         self.beta = nn.Parameter(torch.zeros(num_channels))

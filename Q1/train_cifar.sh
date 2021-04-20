@@ -1,6 +1,6 @@
 #!/bin/sh
 ### Set the job name (for your reference)
-#PBS -N unet
+#PBS -N four
 ### Set the project name, your department code by default
 #PBS -P ee
 ### Request email when job begins and ends
@@ -11,7 +11,7 @@
 #PBS -l select=1:ngpus=1
 
 ### Specify "wallclock time" required for this job, hhh:mm:ss
-#PBS -l walltime=00:40:00
+#PBS -l walltime=02:00:00
 
 #PBS -l software=python
 # After job starts, must goto working directory. 
@@ -25,13 +25,13 @@ cd $PBS_O_WORKDIR
 module purge
 module load apps/anaconda/3
 
-python train_cifar.py --normalization torch_bn --data_dir ./ --output_file ./1.1.pth --n 1
-python train_cifar.py --normalization bn --data_dir ./ --output_file ./1.2_bn.pth --n 1
-python train_cifar.py --normalization in --data_dir ./ --output_file ./1.2_in.pth --n 1
-python train_cifar.py --normalization bin --data_dir ./ --output_file ./1.2_bin.pth --n 1
-python train_cifar.py --normalization ln --data_dir ./ --output_file ./1.2_ln.pth --n 1
-python train_cifar.py --normalization gn --data_dir ./ --output_file ./1.2_gn.pth --n 1
-python train_cifar.py --normalization nn --data_dir ./ --output_file ./1.2_nn.pth --n 1
+### python train_cifar.py --normalization torch_bn --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.1.pth --n 2 --quantiles yes
+### python train_cifar.py --normalization bn --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_bn.pth --n 2 --quantiles yes
+### python train_cifar.py --normalization in --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_in.pth --n 2 --quantiles yes
+python train_cifar.py --normalization bin --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_bin.pth --n 2 --quantiles yes
+### python train_cifar.py --normalization ln --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_ln.pth --n 2 --quantiles yes
+### python train_cifar.py --normalization nn --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_nn.pth --n 2 --quantiles yes
+### python train_cifar.py --normalization gn --data_dir ./cifar-10-batches-py --output_file ./saved_models/1.2_gn.pth --n 2 --quantiles yes
 
 #NOTE
 # The job line is an example : users need to change it to suit their applications
