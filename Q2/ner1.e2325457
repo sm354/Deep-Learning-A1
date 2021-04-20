@@ -1,4 +1,0 @@
-NOTE : Works with all available python packages in the module, check using conda list command
-For conda env creation we recommend apps/anaconda/3EnvCreation module
-/home/apps/anaconda3_2018/4.6.9/lib/python3.6/site-packages/sklearn/metrics/_classification.py:1465: UndefinedMetricWarning: F-score is ill-defined and being set to 0.0 in labels with no true nor predicted samples. Use `zero_division` parameter to control this behavior.
-  average, "true nor predicted", 'F-score is', len(true_sum)
