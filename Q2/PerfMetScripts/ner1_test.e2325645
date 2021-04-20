@@ -1,0 +1,6 @@
+NOTE : Works with all available python packages in the module, check using conda list command
+For conda env creation we recommend apps/anaconda/3EnvCreation module
+Traceback (most recent call last):
+  File "Perf2_1_1.py", line 36, in <module>
+    import seqeval
+ModuleNotFoundError: No module named 'seqeval'
