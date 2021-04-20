@@ -1,3 +1,7 @@
 #ignore the temp files, which may have trained or untrained, saved models which are heavy etc
 Q2/tempfiles/*
+<<<<<<< Updated upstream
 glove_data/*
+=======
+PreTrainedModels/*
+>>>>>>> Stashed changes
