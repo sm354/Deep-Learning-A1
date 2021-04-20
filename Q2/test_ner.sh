@@ -26,7 +26,7 @@ module purge
 module load apps/anaconda/3
 
 # python3 test_ner.py --model_file tempfiles/1.pth --char_embeddings 0 --layer_normalization 0 --crf 0 --test_data_file ../submission_test_files/ner_test_file.txt --output_file tempfiles/1_test.txt --glove_embeddings_file kachra --vocabulary_input_file tempfiles/1.vocab
-python3 test_ner.py --model_file tempfiles/2.pth --char_embeddings 1 --layer_normalization 0 --crf 0 --test_data_file ../submission_test_files/ner_test_file.txt --output_file tempfiles/2_test.txt --glove_embeddings_file kachra --vocabulary_input_file tempfiles/2.vocab
+# python3 test_ner.py --model_file tempfiles/2.pth --char_embeddings 1 --layer_normalization 0 --crf 0 --test_data_file ../submission_test_files/ner_test_file.txt --output_file tempfiles/2_test.txt --glove_embeddings_file kachra --vocabulary_input_file tempfiles/2.vocab
 # python3 test_ner.py --model_file tempfiles/3.pth --char_embeddings 1 --layer_normalization 1 --crf 0 --test_data_file ../submission_test_files/ner_test_file.txt --output_file tempfiles/3_test.txt --glove_embeddings_file kachra --vocabulary_input_file tempfiles/3.vocab
 # python3 test_ner.py --model_file tempfiles/4.pth --char_embeddings 1 --layer_normalization 1 --crf 1 --test_data_file ../submission_test_files/ner_test_file.txt --output_file tempfiles/4_test.txt --glove_embeddings_file kachra --vocabulary_input_file tempfiles/4.vocab
 
