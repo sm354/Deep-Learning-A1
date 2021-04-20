@@ -1,2 +1,3 @@
 #ignore the temp files, which may have trained or untrained, saved models which are heavy etc
 Q2/tempfiles/*
+glove_data/*

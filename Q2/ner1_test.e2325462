@@ -1,0 +1,2 @@
+NOTE : Works with all available python packages in the module, check using conda list command
+For conda env creation we recommend apps/anaconda/3EnvCreation module

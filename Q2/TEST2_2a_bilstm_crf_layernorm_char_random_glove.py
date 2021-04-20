@@ -23,10 +23,10 @@ import io
 import sklearn
 from sklearn.metrics import f1_score
 from sklearn.metrics import accuracy_score
-import seqeval
-from seqeval.metrics import accuracy_score as seq_accuracy_score
-from seqeval.metrics import classification_report as seq_classification_report
-from seqeval.metrics import f1_score as seq_f1_score
+# import seqeval
+# from seqeval.metrics import accuracy_score as seq_accuracy_score
+# from seqeval.metrics import classification_report as seq_classification_report
+# from seqeval.metrics import f1_score as seq_f1_score
 import pickle as pickle
 
 
@@ -55,7 +55,7 @@ def test_model(model, loader):
 
 #load model
 # model = BiLSTM()
-model = torch.load(args.model_file,  map_location=torch.device('cpu'))
+model = torch.load(args.model_file,map_location=torch.device(device))
 model.eval()
 
 [vocab, nertags] = pickle.load(open(args.vocabulary_input_file, "rb"))

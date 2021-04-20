@@ -10,10 +10,10 @@ import io
 import sklearn
 from sklearn.metrics import f1_score
 from sklearn.metrics import accuracy_score
-import seqeval
-from seqeval.metrics import accuracy_score as seq_accuracy_score
-from seqeval.metrics import classification_report as seq_classification_report
-from seqeval.metrics import f1_score as seq_f1_score
+# import seqeval
+# from seqeval.metrics import accuracy_score as seq_accuracy_score
+# from seqeval.metrics import classification_report as seq_classification_report
+# from seqeval.metrics import f1_score as seq_f1_score
 import pickle as pickle
 
 
@@ -114,10 +114,10 @@ class CRFmodule(nn.Module):
         # from the bilstm and given the transition matrix that we have
 
         # VITERBI ALGORITHM - output = decoded_tag_sequence of shape (batchsize, seqlen)
-        forward_scores = self.init_for_scores(Ylstm)
+        forward_scores = self.init_for_scores(Ylstm) #float type
         backtrack = []
         for i in range(Ylstm.shape[1]):
-            for_scr_temp = forward_scores.view((Ylstm.shape[0], 1, Ylstm.shape[2])) 
+            for_scr_temp = forward_scores.view((Ylstm.shape[0], 1, Ylstm.shape[2]))
             forward_transition_score_word = self.transmat + for_scr_temp 
 
             max_indices = torch.argmax(forward_transition_score_word, dim = 2)
@@ -174,7 +174,7 @@ class CRFmodule(nn.Module):
         
     def init_for_scores(self, Ylstm):
         forward_scores = torch.ones((Ylstm.shape[0], Ylstm.shape[2]))*-10000.
-        forward_scores = forward_scores.long().to(Ylstm.device)
+        forward_scores = forward_scores.to(Ylstm.device)
         forward_scores[:, self.startid] = 0.
         return forward_scores
 
@@ -352,7 +352,7 @@ def load_data(datapath, buildvocab_tags= True, vocab = None, nertags = None):
 def get_mask(x, xlengths):
     bin_mask = []
     for i in range(xlengths.shape[0]):
-        bin_mask.append([1]*int(xlengths[i].item())+[0]*int((x.shape[1] - xlengths[i].item())))
+        bin_mask.append([1.]*int(xlengths[i].item())+[0.]*int((x.shape[1] - xlengths[i].item())))
     return torch.tensor(bin_mask)
 
 def load_char_data(words, charvocab):
@@ -594,7 +594,7 @@ if __name__ == "__main__":
 
 
     # Model is ready now we have to train using cross entropy loss
-    num_epochs = 0
+    num_epochs = 50
     # validloss = []
     model.train()
     for epoch in range(num_epochs):
