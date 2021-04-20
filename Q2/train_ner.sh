@@ -11,7 +11,7 @@
 #PBS -l select=1:ngpus=1
 
 ### Specify "wallclock time" required for this job, hhh:mm:ss
-#PBS -l walltime=02:00:00
+#PBS -l walltime=6:00:00
 
 #PBS -l software=python
 # After job starts, must goto working directory. 
@@ -33,7 +33,7 @@ module load apps/anaconda/3
 # python3 train_ner.py --initialization glove --char_embeddings 0 --layer_normalization 0 --crf 0 --output_file tempfiles/1_g.pth --data_dir ../NER_Dataset/ner-gmb --glove_embeddings_file ../glove_data/glove.6B.100d.txt --vocabulary_output_file tempfiles/1_g.vocab
 # python3 train_ner.py --initialization glove --char_embeddings 1 --layer_normalization 0 --crf 0 --output_file tempfiles/2_g.pth --data_dir ../NER_Dataset/ner-gmb --glove_embeddings_file ../glove_data/glove.6B.100d.txt --vocabulary_output_file tempfiles/2_g.vocab
 # python3 train_ner.py --initialization glove --char_embeddings 1 --layer_normalization 1 --crf 0 --output_file tempfiles/3_g.pth --data_dir ../NER_Dataset/ner-gmb --glove_embeddings_file ../glove_data/glove.6B.100d.txt --vocabulary_output_file tempfiles/3_g.vocab
-# python3 train_ner.py --initialization glove --char_embeddings 1 --layer_normalization 1 --crf 1 --output_file tempfiles/4_g.pth --data_dir ../NER_Dataset/ner-gmb --glove_embeddings_file ../glove_data/glove.6B.100d.txt --vocabulary_output_file tempfiles/4_g.vocab
+# python3 train_ner.py --initializßation glove --char_embeddings 1 --layer_normalization 1 --crf 1 --output_file tempfiles/4_g.pth --data_dir ../NER_Dataset/ner-gmb --glove_embeddings_file ../glove_data/glove.6B.100d.txt --vocabulary_output_file tempfiles/4_g.vocab
 
 
 #NOTE
