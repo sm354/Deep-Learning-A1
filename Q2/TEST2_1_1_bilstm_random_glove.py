@@ -59,7 +59,7 @@ def test_model(model, loader):
 
 #load model
 # model = BiLSTM()
-model = torch.load(args.model_file)
+model = torch.load(args.model_file,  map_location=torch.device('cpu'))
 model.eval()
 
 [vocab, nertags] = pickle.load(open(args.vocabulary_input_file, "rb"))
